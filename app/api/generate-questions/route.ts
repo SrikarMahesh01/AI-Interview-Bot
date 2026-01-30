@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGeminiModel } from '@/lib/firebase';
+import { getGeminiModel } from '@/lib/gemini-server';
 import { InterviewConfig, Question } from '@/types/interview';
 
 export async function POST(req: NextRequest) {
@@ -8,13 +8,21 @@ export async function POST(req: NextRequest) {
 
     const model = getGeminiModel();
 
+    // Prepare domain and topic information
+    const domainText = config.customDomain || config.domain;
+    const interviewScope = config.interviewType === 'specific' && config.specificArea
+      ? `Focused specifically on: ${config.specificArea}`
+      : `General coverage of ${domainText}`;
+    const topicsText = config.topics.join(', ');
+
     const prompt = `You are an expert technical interviewer. Generate ${
       config.format === 'verbal' ? '5' : '3'
     } interview questions based on the following configuration:
 
-Domain: ${config.domain}
+Domain: ${domainText}
+Interview Scope: ${interviewScope}
 Difficulty: ${config.difficulty}
-Topics: ${config.topics.join(', ')}
+Topics: ${topicsText}
 Format: ${config.format}
 
 For ${config.format === 'verbal' ? 'verbal/conceptual' : 'coding'} questions:

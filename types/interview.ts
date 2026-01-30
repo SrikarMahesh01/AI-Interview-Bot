@@ -17,6 +17,9 @@ export interface InterviewConfig {
   format: InterviewFormat;
   interactionMode?: InteractionMode;
   duration?: number; // in minutes
+  interviewType: 'specific' | 'general'; // specific area or general based on domain
+  customDomain?: string; // User's custom domain input
+  specificArea?: string; // Specific area if interviewType is 'specific'
 }
 
 export interface Question {

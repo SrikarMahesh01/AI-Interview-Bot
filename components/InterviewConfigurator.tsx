@@ -1,57 +1,131 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { InterviewConfig, DifficultyLevel, InterviewFormat } from '@/types/interview';
-import { DOMAINS, DIFFICULTY_LEVELS, INTERVIEW_FORMATS } from '@/lib/constants';
-import { ArrowRight, Check } from 'lucide-react';
+import { DIFFICULTY_LEVELS, INTERVIEW_FORMATS } from '@/lib/constants';
+import { ArrowRight, Check, Mic, MicOff } from 'lucide-react';
 
 interface ConfiguratorProps {
   onComplete: (config: InterviewConfig) => void;
+  initialDomain?: string;
 }
 
-export default function InterviewConfigurator({ onComplete }: ConfiguratorProps) {
+export default function InterviewConfigurator({ onComplete, initialDomain = '' }: ConfiguratorProps) {
   const [step, setStep] = useState(1);
-  const [selectedDomain, setSelectedDomain] = useState('');
+  const [customDomain, setCustomDomain] = useState(initialDomain);
+  const [isListening, setIsListening] = useState(false);
+  const [interviewType, setInterviewType] = useState<'specific' | 'general'>('general');
+  const [specificArea, setSpecificArea] = useState('');
+  const [isListeningSpecificArea, setIsListeningSpecificArea] = useState(false);
   const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel>('beginner');
-  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [selectedFormat, setSelectedFormat] = useState<InterviewFormat>('verbal');
+  
+  const recognitionRef = useRef<any>(null);
+  const specificAreaRecognitionRef = useRef<any>(null);
 
-  const currentDomain = DOMAINS.find((d) => d.id === selectedDomain);
+  useEffect(() => {
+    // Initialize Web Speech API if available
+    if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
 
-  const toggleTopic = (topic: string) => {
-    if (selectedTopics.includes(topic)) {
-      setSelectedTopics(selectedTopics.filter((t) => t !== topic));
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setCustomDomain(transcript);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+
+      // Initialize for specific area
+      specificAreaRecognitionRef.current = new SpeechRecognition();
+      specificAreaRecognitionRef.current.continuous = false;
+      specificAreaRecognitionRef.current.interimResults = false;
+      specificAreaRecognitionRef.current.lang = 'en-US';
+
+      specificAreaRecognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setSpecificArea(transcript);
+        setIsListeningSpecificArea(false);
+      };
+
+      specificAreaRecognitionRef.current.onerror = () => {
+        setIsListeningSpecificArea(false);
+      };
+
+      specificAreaRecognitionRef.current.onend = () => {
+        setIsListeningSpecificArea(false);
+      };
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+      if (specificAreaRecognitionRef.current) {
+        specificAreaRecognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  const toggleVoiceInput = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
     } else {
-      setSelectedTopics([...selectedTopics, topic]);
+      setIsListening(true);
+      recognitionRef.current?.start();
+    }
+  };
+
+  const toggleSpecificAreaVoiceInput = () => {
+    if (isListeningSpecificArea) {
+      specificAreaRecognitionRef.current?.stop();
+      setIsListeningSpecificArea(false);
+    } else {
+      setIsListeningSpecificArea(true);
+      specificAreaRecognitionRef.current?.start();
     }
   };
 
   const handleNext = () => {
-    if (step === 1 && selectedDomain) {
+    if (step === 1 && customDomain.trim()) {
       setStep(2);
-    } else if (step === 2 && selectedDifficulty) {
+    } else if (step === 2 && (interviewType === 'general' || specificArea.trim())) {
       setStep(3);
-    } else if (step === 3 && selectedTopics.length > 0) {
+    } else if (step === 3 && selectedDifficulty) {
       setStep(4);
     }
   };
 
   const handleStart = () => {
     const config: InterviewConfig = {
-      domain: selectedDomain,
+      domain: customDomain,
       difficulty: selectedDifficulty,
-      topics: selectedTopics,
+      topics: interviewType === 'specific' ? [specificArea] : [customDomain],
       format: selectedFormat,
       interactionMode: selectedFormat === 'verbal' ? 'text' : undefined,
       duration: 30,
+      interviewType,
+      customDomain,
+      specificArea: interviewType === 'specific' ? specificArea : undefined,
     };
     onComplete(config);
   };
 
   const canProceed = () => {
-    if (step === 1) return selectedDomain !== '';
-    if (step === 2) return selectedDifficulty !== '';
-    if (step === 3) return selectedTopics.length > 0;
+    if (step === 1) return customDomain.trim() !== '';
+    if (step === 2) return interviewType === 'general' || specificArea.trim() !== '';
+    if (step === 3) return selectedDifficulty !== '';
     if (step === 4) return selectedFormat !== '';
     return false;
   };
@@ -88,40 +162,158 @@ export default function InterviewConfigurator({ onComplete }: ConfiguratorProps)
           </div>
           <div className="text-center">
             <h2 className="text-2xl font-bold text-gray-900">
-              {step === 1 && 'Select Domain'}
-              {step === 2 && 'Choose Difficulty'}
-              {step === 3 && 'Pick Topics'}
+              {step === 1 && 'Enter Your Domain'}
+              {step === 2 && 'Interview Type'}
+              {step === 3 && 'Choose Difficulty'}
               {step === 4 && 'Interview Format'}
             </h2>
           </div>
         </div>
 
-        {/* Step 1: Domain Selection */}
+        {/* Step 1: Custom Domain Input */}
         {step === 1 && (
-          <div className="space-y-4">
-            {DOMAINS.map((domain) => (
-              <button
-                key={domain.id}
-                onClick={() => setSelectedDomain(domain.id)}
-                className={`w-full p-6 rounded-xl border-2 text-left transition-all ${
-                  selectedDomain === domain.id
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-300'
-                }`}
-              >
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {domain.name}
-                </h3>
-                <p className="text-sm text-gray-600 mt-1">
-                  {domain.topics.length} topics available
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                What domain would you like to be interviewed on?
+              </label>
+              <p className="text-sm text-gray-500 mb-4">
+                Type or speak the domain (e.g., "Python Programming", "React Development", "Machine Learning")
+              </p>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={customDomain}
+                  onChange={(e) => setCustomDomain(e.target.value)}
+                  placeholder="Enter domain name..."
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-gray-900 pr-12"
+                />
+                <button
+                  onClick={toggleVoiceInput}
+                  className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-lg transition-colors ${
+                    isListening
+                      ? 'bg-red-500 text-white animate-pulse'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                  title={isListening ? 'Stop listening' : 'Start voice input'}
+                >
+                  {isListening ? (
+                    <MicOff className="w-5 h-5" />
+                  ) : (
+                    <Mic className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+              {isListening && (
+                <p className="text-sm text-red-500 mt-2 animate-pulse">
+                  Listening... Speak now
                 </p>
-              </button>
-            ))}
+              )}
+            </div>
+
+            {/* Examples */}
+            <div className="bg-blue-50 rounded-lg p-4">
+              <p className="text-sm font-medium text-blue-900 mb-2">Examples:</p>
+              <div className="flex flex-wrap gap-2">
+                {['Data Structures', 'Python Programming', 'React.js', 'System Design', 'Machine Learning', 'Web Development'].map((example) => (
+                  <button
+                    key={example}
+                    onClick={() => setCustomDomain(example)}
+                    className="px-3 py-1 bg-white text-blue-700 rounded-full text-sm hover:bg-blue-100 transition-colors"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Step 2: Difficulty Level */}
+        {/* Step 2: Interview Type Selection */}
         {step === 2 && (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-4">
+                Would you like a general interview or focused on a specific area?
+              </label>
+              
+              <div className="space-y-4">
+                <button
+                  onClick={() => setInterviewType('general')}
+                  className={`w-full p-6 rounded-xl border-2 text-left transition-all ${
+                    interviewType === 'general'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-gray-200 hover:border-blue-300'
+                  }`}
+                >
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    General Interview
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Cover broad topics across {customDomain}
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => setInterviewType('specific')}
+                  className={`w-full p-6 rounded-xl border-2 text-left transition-all ${
+                    interviewType === 'specific'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-gray-200 hover:border-blue-300'
+                  }`}
+                >
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Specific Area
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Focus on a particular topic or concept
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Specific Area Input */}
+            {interviewType === 'specific' && (
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  What specific area would you like to focus on?
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={specificArea}
+                    onChange={(e) => setSpecificArea(e.target.value)}
+                    placeholder="e.g., Recursion, Hooks, Neural Networks..."
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-gray-900 pr-12"
+                  />
+                  <button
+                    onClick={toggleSpecificAreaVoiceInput}
+                    className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-lg transition-colors ${
+                      isListeningSpecificArea
+                        ? 'bg-red-500 text-white animate-pulse'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                    title={isListeningSpecificArea ? 'Stop listening' : 'Start voice input'}
+                  >
+                    {isListeningSpecificArea ? (
+                      <MicOff className="w-5 h-5" />
+                    ) : (
+                      <Mic className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+                {isListeningSpecificArea && (
+                  <p className="text-sm text-red-500 mt-2 animate-pulse">
+                    Listening... Speak now
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Difficulty Level */}
+        {step === 3 && (
           <div className="space-y-4">
             {DIFFICULTY_LEVELS.map((level) => (
               <button
@@ -139,37 +331,6 @@ export default function InterviewConfigurator({ onComplete }: ConfiguratorProps)
                 <p className="text-sm text-gray-600 mt-1">{level.description}</p>
               </button>
             ))}
-          </div>
-        )}
-
-        {/* Step 3: Topic Selection */}
-        {step === 3 && currentDomain && (
-          <div>
-            <p className="text-sm text-gray-600 mb-4">
-              Select at least one topic (you can select multiple)
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              {currentDomain.topics.map((topic) => (
-                <button
-                  key={topic}
-                  onClick={() => toggleTopic(topic)}
-                  className={`p-4 rounded-lg border-2 text-left transition-all ${
-                    selectedTopics.includes(topic)
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-gray-200 hover:border-blue-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-900">
-                      {topic}
-                    </span>
-                    {selectedTopics.includes(topic) && (
-                      <Check className="w-4 h-4 text-blue-600" />
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateAIContent } from '@/lib/firebase';
+import { generateAIContent } from '@/lib/gemini-server';
 import { Answer, Question } from '@/types/interview';
 
 export async function POST(req: NextRequest) {
